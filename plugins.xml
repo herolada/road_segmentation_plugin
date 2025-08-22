@@ -1,0 +1,5 @@
+<library path="road_segmentation_plugin">
+    <class type="depthai_ros_driver::pipeline_gen::RGBDRoadSegmentation" base_class_type="depthai_ros_driver::pipeline_gen::BasePipeline">
+        <description>RGBDRoadSegmentation Pipeline.</description>
+    </class>
+</library>
