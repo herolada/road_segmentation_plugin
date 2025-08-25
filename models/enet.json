@@ -1,0 +1,17 @@
+{
+    "model": {
+        "model_name": "$(find-pkg-share elevation_mapping_cupy)/models/ENet_triple_schoolyard_4_shaves.blob",
+        "zoo": "path"
+    },
+    "nn_config": {
+        "NN_family": "segmentation",
+        "confidence_threshold": 0.5
+    },
+    "mappings": {
+        "labels": [
+            "background",
+            "road",
+            "sky"
+        ]
+    }
+}

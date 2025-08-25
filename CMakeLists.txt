@@ -39,6 +39,11 @@ install(TARGETS road_segmentation_plugin
         INCLUDES DESTINATION include
 )
 
+install(
+  DIRECTORY models
+  DESTINATION share/${PROJECT_NAME}
+)
+
 pluginlib_export_plugin_description_file(depthai_ros_driver plugins.xml)
 
 ament_package()
