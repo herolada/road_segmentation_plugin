@@ -17,6 +17,7 @@ add_library(
   road_segmentation_plugin SHARED
   src/road_segmentation_plugin.cpp
   src/road_segmentation.cpp
+  src/nn_wrapper_road_segmentation.cpp
 )
 
 target_include_directories(road_segmentation_plugin PUBLIC
