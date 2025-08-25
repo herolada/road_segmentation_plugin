@@ -1,6 +1,6 @@
 {
     "model": {
-        "model_name": "$(find-pkg-share elevation_mapping_cupy)/models/ENet_triple_schoolyard_4_shaves.blob",
+        "model_name": "$(find-pkg-share road_segmentation_plugin)/models/ENet_triple_schoolyard_4_shaves.blob",
         "zoo": "path"
     },
     "nn_config": {
