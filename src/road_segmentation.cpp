@@ -18,6 +18,9 @@
 #include "rclcpp/node.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/image.hpp"
+#include "depthai_bridge/BridgePublisher.hpp"
+
+
 
 cv::Mat compute_normalized_entropy(const std::vector<cv::Mat> &logits, double epsilon = 1e-10) {
     int num_classes = logits.size();
@@ -102,11 +105,21 @@ void RoadSegmentation::setXinXout(std::shared_ptr<dai::Pipeline> pipeline) {
 }
 
 void RoadSegmentation::setupQueues(std::shared_ptr<dai::Device> device) {
+    // CAMERA INFO
+    int width = imageManip->initialConfig.getResizeWidth();
+    int height = imageManip->initialConfig.getResizeHeight();
+
+    frame = getOpticalTFPrefix(getSocketName(static_cast<dai::CameraBoardSocket>(ph->getParam<int>("i_board_socket_id"))));
+    dai::rosBridge::ImageConverter converter(frame, true);
+    auto calibrationHandler = device->readCalibration();
+    nnInfo = converter.calibrationToCameraInfo(calibrationHandler, static_cast<dai::CameraBoardSocket>(ph->getParam<int>("i_board_socket_id")), width, height);
+
     nnQ = device->getOutputQueue(nnQName, ph->getParam<int>("i_max_q_size"), false);
     // nnPub = image_transport::create_camera_publisher(getROSNode().get(), "~/" + getName() + "/image_raw");
     nnPub_mask = image_transport::create_camera_publisher(getROSNode().get(), "~/" + getName() + "/mask/image_raw");
     nnPub_entropy = image_transport::create_camera_publisher(getROSNode().get(), "~/" + getName() + "/entropy/image_raw");
-    nnQ->addCallback(std::bind(&RoadSegmentation::segmentationCB, this, std::placeholders::_1, std::placeholders::_2));
+    nnQ->addCallback(std::bind(&RoadSegmentation::segmentationCB, this, std::placeholders::_1, std::placeholders::_2));    
+
     if(ph->getParam<bool>("i_enable_passthrough")) {
         auto tfPrefix = getOpticalTFPrefix(getSocketName(static_cast<dai::CameraBoardSocket>(ph->getParam<int>("i_board_socket_id"))));
         ptQ = device->getOutputQueue(ptQName, ph->getParam<int>("i_max_q_size"), false);
@@ -309,11 +322,20 @@ void RoadSegmentation::segmentationCB(const std::string& /*name*/, const std::sh
     cv_bridge::CvImage imgBridge_mask, imgBridge_entropy;
     sensor_msgs::msg::Image img_msg_mask, img_msg_entropy;
 
-    // Prepare header
+
+
+    // // Prepare header
+    // auto tfPrefix = getOpticalTFPrefix(getSocketName(static_cast<dai::CameraBoardSocket>(ph->getParam<int>("i_board_socket_id"))));
+    
+    // // CAMERA INFO
+    // dai::rosBridge::ImageConverter converter(tfPrefix, true);
+    // auto calibrationHandler = device.readCalibration();
+    // auto cameraInfo = converter.calibrationToCameraInfo(calibrationHandler, ph->getParam<int>("i_board_socket_id"), ph->getParam<int>("i_width"), ph->getParam<int>("i_height"));
+
     std_msgs::msg::Header header;
     header.stamp = getROSNode()->get_clock()->now();
-    auto tfPrefix = getOpticalTFPrefix(getSocketName(static_cast<dai::CameraBoardSocket>(ph->getParam<int>("i_board_socket_id"))));
-    header.frame_id = tfPrefix;
+    header.frame_id = frame;
+
     nnInfo.header = header;
     //RCLCPP_WARN(getLogger(), "Header prepared with frame_id: %s", tfPrefix.c_str());
 

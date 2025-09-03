@@ -71,6 +71,7 @@ class RoadSegmentation : public BaseNode {
     std::shared_ptr<dai::DataOutputQueue> nnQ, ptQ;
     std::shared_ptr<dai::node::XLinkOut> xoutNN, xoutPT;
     std::string nnQName, ptQName;
+    std::string frame;
 };
 
 }  // namespace nn
