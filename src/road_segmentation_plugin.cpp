@@ -5,9 +5,9 @@
 #include "depthai-shared/common/CameraBoardSocket.hpp"
 #include "depthai_ros_driver/dai_nodes/base_node.hpp"
 
-#define private public
+//#define private public
 #include "depthai_ros_driver/dai_nodes/nn/nn_wrapper.hpp"
-#undef private
+//#undef private
 
 #include "depthai_ros_driver/pipeline/base_types.hpp"
 
