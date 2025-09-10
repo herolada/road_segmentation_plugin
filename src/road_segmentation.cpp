@@ -237,7 +237,6 @@ void RoadSegmentation::process_frame(std::vector<float>& nn_output, cv::Mat &mas
 
     // Prepare result matrix for argmax
     cv::Mat argmax_mat(img_height, img_width, CV_8U, cv::Scalar(0));
-    cv::Mat cost_mat(img_height, img_width, CV_32F, cv::Scalar(1.0));
     //RCLCPP_WARN(getLogger(), "Argmax matrix initialized: %dx%d", argmax_mat.rows, argmax_mat.cols);
 
     // Do argmax manually
@@ -297,7 +296,7 @@ void RoadSegmentation::process_frame(std::vector<float>& nn_output, cv::Mat &mas
             if (entropy_map.at<float>(y, x) > normalizedEntropyThreshold)
                 cls = static_cast<uchar>(SegmentationClass::BACKGROUND);
 
-            cost_mat.at<float>(y, x) = classCosts[static_cast<size_t>(cls)];
+            cost.at<float>(y, x) = classCosts[static_cast<size_t>(cls)];
         }
     }
 
