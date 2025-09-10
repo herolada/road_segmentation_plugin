@@ -81,7 +81,21 @@ RoadSegmentation::RoadSegmentation(const std::string& daiNodeName,
     imageManip = pipeline->create<dai::node::ImageManip>();
     ph = std::make_unique<param_handlers::NNParamHandler>(node, daiNodeName, socket);
     ph->declareParams(segNode, imageManip);
+
+    classCosts[static_cast<size_t>(SegmentationClass::BACKGROUND)] = 1.0;
+    classCosts[static_cast<size_t>(SegmentationClass::ROAD)] = 0.0;
+    classCosts[static_cast<size_t>(SegmentationClass::SKY)] = 1.0;
+
+    normalizedEntropyThreshold = 0.3;
+
     RCLCPP_DEBUG(getLogger(), "Node %s created", daiNodeName.c_str());
+    RCLCPP_WARN(getLogger(), "ROAD SEGMENTATION blocking %i size %i wait %i",
+        segNode->input.blocking.value_or(segNode->input.defaultBlocking),
+        segNode->input.queueSize.value_or(segNode->input.defaultQueueSize),
+        segNode->input.waitForMessage.value_or(segNode->input.defaultWaitForMessage));
+    segNode->input.setBlocking(false);
+    segNode->input.setQueueSize(1);
+    segNode->input.setWaitForMessage(false);
     imageManip->out.link(segNode->input);
     setXinXout(pipeline);
 }
@@ -118,7 +132,8 @@ void RoadSegmentation::setupQueues(std::shared_ptr<dai::Device> device) {
     // nnPub = image_transport::create_camera_publisher(getROSNode().get(), "~/" + getName() + "/image_raw");
     nnPub_mask = image_transport::create_camera_publisher(getROSNode().get(), "~/" + getName() + "/mask/image_raw");
     nnPub_entropy = image_transport::create_camera_publisher(getROSNode().get(), "~/" + getName() + "/entropy/image_raw");
-    nnQ->addCallback(std::bind(&RoadSegmentation::segmentationCB, this, std::placeholders::_1, std::placeholders::_2));    
+    nnPub_cost = image_transport::create_camera_publisher(getROSNode().get(), "~/" + getName() + "/cost/image_raw");
+    nnQ->addCallback(std::bind(&RoadSegmentation::segmentationCB, this, std::placeholders::_1, std::placeholders::_2));
 
     if(ph->getParam<bool>("i_enable_passthrough")) {
         auto tfPrefix = getOpticalTFPrefix(getSocketName(static_cast<dai::CameraBoardSocket>(ph->getParam<int>("i_board_socket_id"))));
@@ -193,17 +208,17 @@ void RoadSegmentation::closeQueues() {
 
 
 
-void RoadSegmentation::process_frame(std::vector<float>& nn_output, cv::Mat &mask, cv::Mat &entropy, int img_width, int img_height)
+void RoadSegmentation::process_frame(std::vector<float>& nn_output, cv::Mat &mask, cv::Mat &entropy, cv::Mat &cost, int img_width, int img_height)
 {
     //RCLCPP_WARN(getLogger(), "process_frame called");
     //RCLCPP_WARN(getLogger(), "nn_output size: %zu", nn_output.size());
     //RCLCPP_WARN(getLogger(), "img_width: %d, img_height: %d", img_width, img_height);
 
     // Print first few elements of nn_output
-    std::string nn_preview = "";
-    for(int i = 0; i < std::min<size_t>(10, nn_output.size()); ++i) {
-        nn_preview += std::to_string(nn_output[i]) + " ";
-    }
+    // std::string nn_preview = "";
+    // for(int i = 0; i < std::min<size_t>(10, nn_output.size()); ++i) {
+        // nn_preview += std::to_string(nn_output[i]) + " ";
+    // }
     //RCLCPP_WARN(getLogger(), "First 10 elements of nn_output: %s", nn_preview.c_str());
 
     // Create cv::Mat for each channel
@@ -213,15 +228,16 @@ void RoadSegmentation::process_frame(std::vector<float>& nn_output, cv::Mat &mas
         //RCLCPP_WARN(getLogger(), "Channel %d dimensions: %dx%d", c, channels[c].rows, channels[c].cols);
 
         // Print first row of each channel
-        std::string row_preview = "";
-        for (int x = 0; x < std::min(10, img_width); ++x) {
-            row_preview += std::to_string(channels[c].at<float>(0, x)) + " ";
-        }
+        // std::string row_preview = "";
+        // for (int x = 0; x < std::min(10, img_width); ++x) {
+            // row_preview += std::to_string(channels[c].at<float>(0, x)) + " ";
+        // }
         //RCLCPP_WARN(getLogger(), "Channel %d first row (first 10 elements): %s", c, row_preview.c_str());
     }
 
     // Prepare result matrix for argmax
     cv::Mat argmax_mat(img_height, img_width, CV_8U, cv::Scalar(0));
+    cv::Mat cost_mat(img_height, img_width, CV_32F, cv::Scalar(1.0));
     //RCLCPP_WARN(getLogger(), "Argmax matrix initialized: %dx%d", argmax_mat.rows, argmax_mat.cols);
 
     // Do argmax manually
@@ -242,10 +258,10 @@ void RoadSegmentation::process_frame(std::vector<float>& nn_output, cv::Mat &mas
     //RCLCPP_WARN(getLogger(), "Argmax computation done");
 
     // Print first row of argmax matrix
-    std::string argmax_row_preview = "";
-    for(int x = 0; x < std::min(10, img_width); ++x) {
-        argmax_row_preview += std::to_string(argmax_mat.at<uchar>(0, x)) + " ";
-    }
+    // std::string argmax_row_preview = "";
+    // for(int x = 0; x < std::min(10, img_width); ++x) {
+        // argmax_row_preview += std::to_string(argmax_mat.at<uchar>(0, x)) + " ";
+    // }
     //RCLCPP_WARN(getLogger(), "Argmax first row (first 10 elements): %s", argmax_row_preview.c_str());
 
     // Define colors (BGR)
@@ -264,7 +280,7 @@ void RoadSegmentation::process_frame(std::vector<float>& nn_output, cv::Mat &mas
     //RCLCPP_WARN(getLogger(), "Mask creation done. Mask size: %dx%d, type: %d", mask.rows, mask.cols, mask.type());
 
     // Print first pixel of mask
-    cv::Vec3b first_pixel = mask.at<cv::Vec3b>(0,0);
+    // cv::Vec3b first_pixel = mask.at<cv::Vec3b>(0,0);
     //RCLCPP_WARN(getLogger(), "First pixel of mask: B=%d G=%d R=%d", first_pixel[0], first_pixel[1], first_pixel[2]);
 
     // Compute entropy
@@ -275,11 +291,21 @@ void RoadSegmentation::process_frame(std::vector<float>& nn_output, cv::Mat &mas
     entropy_map.convertTo(entropy, CV_8U, 255.0);
     //RCLCPP_WARN(getLogger(), "Entropy conversion done. Entropy size: %dx%d, type: %d", entropy.rows, entropy.cols, entropy.type());
 
-    // Print first row of entropy
-    std::string entropy_row_preview = "";
-    for(int x = 0; x < std::min(10, img_width); ++x) {
-        entropy_row_preview += std::to_string(entropy.at<uchar>(0,x)) + " ";
+    for (int y = 0; y < img_height; ++y) {
+        for (int x = 0; x < img_width; ++x) {
+            uchar cls = argmax_mat.at<uchar>(y, x);
+            if (entropy_map.at<float>(y, x) > normalizedEntropyThreshold)
+                cls = static_cast<uchar>(SegmentationClass::BACKGROUND);
+
+            cost_mat.at<float>(y, x) = classCosts[static_cast<size_t>(cls)];
+        }
     }
+
+    // Print first row of entropy
+    // std::string entropy_row_preview = "";
+    // for(int x = 0; x < std::min(10, img_width); ++x) {
+    //     entropy_row_preview += std::to_string(entropy.at<uchar>(0,x)) + " ";
+    // }
     //RCLCPP_WARN(getLogger(), "Entropy first row (first 10 elements): %s", entropy_row_preview.c_str());
 }
 
@@ -293,8 +319,8 @@ void RoadSegmentation::segmentationCB(const std::string& /*name*/, const std::sh
 
     // Cast input data
     auto in_det = std::dynamic_pointer_cast<dai::NNData>(data);
-    if(!in_det) {
-        //RCLCPP_WARN(getLogger(), "Failed to cast data to dai::NNData");
+    if (!in_det) {
+        RCLCPP_WARN(getLogger(), "Failed to cast data to dai::NNData");
         return;
     } else {
         //RCLCPP_WARN(getLogger(), "Successfully casted data to dai::NNData");
@@ -307,20 +333,19 @@ void RoadSegmentation::segmentationCB(const std::string& /*name*/, const std::sh
     // Get image dimensions
     int img_width = imageManip->initialConfig.getResizeWidth();
     int img_height = imageManip->initialConfig.getResizeHeight();
-    //RCLCPP_WARN(getLogger(), "Image dimensions: width=%d, height=%d", img_width, img_height);
 
     // Create mask and entropy matrices
     cv::Mat mask(img_height, img_width, CV_8UC3);
-    cv::Mat entropy(img_height, img_width, CV_8U);
-    //RCLCPP_WARN(getLogger(), "Allocated mask and entropy Mats");
+    cv::Mat entropy(img_height, img_width, CV_8UC1);
+    cv::Mat cost(img_height, img_width, CV_32FC1);
 
     // Process frame
-    process_frame(nn_frame, mask, entropy, img_width, img_height);
+    process_frame(nn_frame, mask, entropy, cost, img_width, img_height);
     //RCLCPP_WARN(getLogger(), "Processed frame");
 
     // Prepare cv_bridge images
-    cv_bridge::CvImage imgBridge_mask, imgBridge_entropy;
-    sensor_msgs::msg::Image img_msg_mask, img_msg_entropy;
+    cv_bridge::CvImage imgBridge_mask, imgBridge_entropy, imgBridge_cost;
+    sensor_msgs::msg::Image img_msg_mask, img_msg_entropy, img_msg_cost;
 
 
 
@@ -337,23 +362,21 @@ void RoadSegmentation::segmentationCB(const std::string& /*name*/, const std::sh
     header.frame_id = frame;
 
     nnInfo.header = header;
-    //RCLCPP_WARN(getLogger(), "Header prepared with frame_id: %s", tfPrefix.c_str());
 
     // Convert to ROS Image messages
     imgBridge_mask = cv_bridge::CvImage(header, sensor_msgs::image_encodings::BGR8, mask);
     imgBridge_mask.toImageMsg(img_msg_mask);
-    //RCLCPP_WARN(getLogger(), "Mask image converted to ROS message");
 
     imgBridge_entropy = cv_bridge::CvImage(header, sensor_msgs::image_encodings::MONO8, entropy);
     imgBridge_entropy.toImageMsg(img_msg_entropy);
-    //RCLCPP_WARN(getLogger(), "Entropy image converted to ROS message");
+
+    imgBridge_cost = cv_bridge::CvImage(header, sensor_msgs::image_encodings::TYPE_32FC1, cost);
+    imgBridge_cost.toImageMsg(img_msg_cost);
 
     // Publish
     nnPub_mask.publish(img_msg_mask, nnInfo);
-    //RCLCPP_WARN(getLogger(), "Mask image published");
-
     nnPub_entropy.publish(img_msg_entropy, nnInfo);
-    //RCLCPP_WARN(getLogger(), "Entropy image published");
+    nnPub_cost.publish(img_msg_cost, nnInfo);
 }
 
 // cv::Mat RoadSegmentation::decodeDeeplab(cv::Mat mat) {

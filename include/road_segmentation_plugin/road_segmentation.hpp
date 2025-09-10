@@ -39,6 +39,14 @@ class NNParamHandler;
 }
 namespace dai_nodes {
 namespace nn {
+
+enum class SegmentationClass
+{
+  BACKGROUND,
+  ROAD,
+  SKY,
+};
+
 class RoadSegmentation : public BaseNode {
    public:
     RoadSegmentation(const std::string& daiNodeName,
@@ -57,13 +65,13 @@ class RoadSegmentation : public BaseNode {
    private:
     // cv::Mat decodeDeeplab(cv::Mat mat);
     void segmentationCB(const std::string& name, const std::shared_ptr<dai::ADatatype>& data);
-    void process_frame(std::vector<float>& nn_output, cv::Mat &mask, cv::Mat &entropy, int img_width, int img_height);
+    void process_frame(std::vector<float>& nn_output, cv::Mat &mask, cv::Mat &entropy, cv::Mat &cost, int img_width, int img_height);
 
     cv::Mat count_normalized_entropy(const cv::Mat& segm);
     std::vector<std::string> labelNames;
     std::shared_ptr<dai::ros::ImageConverter> imageConverter;
     std::shared_ptr<camera_info_manager::CameraInfoManager> infoManager;
-    image_transport::CameraPublisher ptPub, nnPub_mask, nnPub_entropy;
+    image_transport::CameraPublisher ptPub, nnPub_mask, nnPub_entropy, nnPub_cost;
     sensor_msgs::msg::CameraInfo nnInfo;
     std::shared_ptr<dai::node::NeuralNetwork> segNode;
     std::shared_ptr<dai::node::ImageManip> imageManip;
@@ -72,6 +80,8 @@ class RoadSegmentation : public BaseNode {
     std::shared_ptr<dai::node::XLinkOut> xoutNN, xoutPT;
     std::string nnQName, ptQName;
     std::string frame;
+    std::array<float, 3> classCosts;
+    float normalizedEntropyThreshold {1.0};
 };
 
 }  // namespace nn
