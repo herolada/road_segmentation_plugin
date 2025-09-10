@@ -82,11 +82,11 @@ RoadSegmentation::RoadSegmentation(const std::string& daiNodeName,
     ph = std::make_unique<param_handlers::NNParamHandler>(node, daiNodeName, socket);
     ph->declareParams(segNode, imageManip);
 
-    classCosts[static_cast<size_t>(SegmentationClass::BACKGROUND)] = 1.0;
-    classCosts[static_cast<size_t>(SegmentationClass::ROAD)] = 0.0;
-    classCosts[static_cast<size_t>(SegmentationClass::SKY)] = 1.0;
+    classCosts[static_cast<size_t>(SegmentationClass::BACKGROUND)] = node->declare_parameter("background_cost", 1.0);
+    classCosts[static_cast<size_t>(SegmentationClass::ROAD)] = node->declare_parameter("road_cost", 0.0);
+    classCosts[static_cast<size_t>(SegmentationClass::SKY)] = node->declare_parameter("sky_cost", 1.0);
 
-    normalizedEntropyThreshold = 0.3;
+    normalizedEntropyThreshold = node->declare_parameter("normalized_entropy_threshold", 0.5);
 
     RCLCPP_DEBUG(getLogger(), "Node %s created", daiNodeName.c_str());
     RCLCPP_WARN(getLogger(), "ROAD SEGMENTATION blocking %i size %i wait %i",
@@ -408,6 +408,11 @@ dai::Node::Input RoadSegmentation::getInput(int /*linkType*/) {
 
 void RoadSegmentation::updateParams(const std::vector<rclcpp::Parameter>& params) {
     ph->setRuntimeParams(params);
+    for (const auto& p : params)
+    {
+        if (p.get_name() == "normalized_entropy_threshold")
+            normalizedEntropyThreshold = p.as_double();
+    }
 }
 }  // namespace nn
 }  // namespace dai_nodes
