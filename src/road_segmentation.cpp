@@ -71,10 +71,17 @@ namespace depthai_ros_driver {
 namespace dai_nodes {
 namespace nn {
 
+inline void setBestEffortInput(dai::node::NeuralNetwork::Input& input)
+{
+    input.setBlocking(false);
+    input.setQueueSize(1);
+    input.setWaitForMessage(false);
+}
+
 RoadSegmentation::RoadSegmentation(const std::string& daiNodeName,
-                           std::shared_ptr<rclcpp::Node> node,
-                           std::shared_ptr<dai::Pipeline> pipeline,
-                           const dai::CameraBoardSocket& socket)
+                                   std::shared_ptr<rclcpp::Node> node,
+                                   std::shared_ptr<dai::Pipeline> pipeline,
+                                   const dai::CameraBoardSocket& socket)
     : BaseNode(daiNodeName, node, pipeline) {
     RCLCPP_DEBUG(getLogger(), "Creating node %s", daiNodeName.c_str());
     setNames();
@@ -86,20 +93,21 @@ RoadSegmentation::RoadSegmentation(const std::string& daiNodeName,
     steadyBaseTime = std::chrono::steady_clock::now();
     rosBaseTime = rclcpp::Clock().now();
 
-    classCosts[static_cast<size_t>(SegmentationClass::BACKGROUND)] = node->declare_parameter("background_cost", 1.0);
-    classCosts[static_cast<size_t>(SegmentationClass::ROAD)] = node->declare_parameter("road_cost", 0.0);
-    classCosts[static_cast<size_t>(SegmentationClass::SKY)] = node->declare_parameter("sky_cost", 1.0);
+    classCosts[static_cast<size_t>(SegmentationClass::BACKGROUND)] = node->declare_parameter("background_cost", 1.0f);
+    classCosts[static_cast<size_t>(SegmentationClass::ROAD)] = node->declare_parameter("road_cost", 0.0f);
+    classCosts[static_cast<size_t>(SegmentationClass::SKY)] = node->declare_parameter("sky_cost", 1.0f);
 
-    normalizedEntropyThreshold = node->declare_parameter("normalized_entropy_threshold", 0.5);
+    normalizedEntropyThreshold = node->declare_parameter("normalized_entropy_threshold", 0.5f);
 
     RCLCPP_DEBUG(getLogger(), "Node %s created", daiNodeName.c_str());
     RCLCPP_WARN(getLogger(), "ROAD SEGMENTATION blocking %i size %i wait %i",
         segNode->input.blocking.value_or(segNode->input.defaultBlocking),
         segNode->input.queueSize.value_or(segNode->input.defaultQueueSize),
         segNode->input.waitForMessage.value_or(segNode->input.defaultWaitForMessage));
-    segNode->input.setBlocking(false);
-    segNode->input.setQueueSize(1);
-    segNode->input.setWaitForMessage(false);
+
+    setBestEffortInput(segNode->input);
+    setBestEffortInput(imageManip->inputImage);
+
     imageManip->out.link(segNode->input);
     setXinXout(pipeline);
 }
@@ -115,6 +123,7 @@ void RoadSegmentation::setXinXout(std::shared_ptr<dai::Pipeline> pipeline) {
     xoutNN = pipeline->create<dai::node::XLinkOut>();
     xoutNN->setStreamName(nnQName);
     segNode->out.link(xoutNN->input);
+    setBestEffortInput(xoutNN->input);
     if(ph->getParam<bool>("i_enable_passthrough")) {
         xoutPT = pipeline->create<dai::node::XLinkOut>();
         xoutPT->setStreamName(ptQName);
