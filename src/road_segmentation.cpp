@@ -356,8 +356,11 @@ void RoadSegmentation::segmentationCB(const std::string& /*name*/, const std::sh
     // auto calibrationHandler = device.readCalibration();
     // auto cameraInfo = converter.calibrationToCameraInfo(calibrationHandler, ph->getParam<int>("i_board_socket_id"), ph->getParam<int>("i_width"), ph->getParam<int>("i_height"));
 
+    const auto imgStamp = in_det->getTimestamp();
+
     std_msgs::msg::Header header;
-    header.stamp = getROSNode()->get_clock()->now();
+    header.stamp = rclcpp::Time(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(imgStamp.time_since_epoch()).count());
     header.frame_id = frame;
 
     nnInfo.header = header;
