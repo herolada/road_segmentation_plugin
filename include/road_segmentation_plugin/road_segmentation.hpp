@@ -69,7 +69,7 @@ class RoadSegmentation : public BaseNode {
 
     cv::Mat count_normalized_entropy(const cv::Mat& segm);
     std::vector<std::string> labelNames;
-    std::shared_ptr<dai::ros::ImageConverter> imageConverter;
+    std::shared_ptr<dai::ros::ImageConverter> imageConverterPt;
     std::shared_ptr<camera_info_manager::CameraInfoManager> infoManager;
     image_transport::CameraPublisher ptPub, nnPub_mask, nnPub_entropy, nnPub_cost;
     sensor_msgs::msg::CameraInfo nnInfo;
@@ -82,6 +82,10 @@ class RoadSegmentation : public BaseNode {
     std::string frame;
     std::array<float, 3> classCosts;
     float normalizedEntropyThreshold {1.0};
+
+    std::chrono::time_point<std::chrono::steady_clock> steadyBaseTime;
+    rclcpp::Time rosBaseTime;
+    int64_t totalNsChange{0};
 };
 
 }  // namespace nn

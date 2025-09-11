@@ -9,6 +9,7 @@
 #include "depthai/pipeline/node/ImageManip.hpp"
 #include "depthai/pipeline/node/NeuralNetwork.hpp"
 #include "depthai/pipeline/node/XLinkOut.hpp"
+#include "depthai_bridge/depthaiUtility.hpp"
 #include "depthai_bridge/ImageConverter.hpp"
 #include "depthai_ros_driver/dai_nodes/sensors/sensor_helpers.hpp"
 #include "depthai_ros_driver/param_handlers/nn_param_handler.hpp"
@@ -138,18 +139,18 @@ void RoadSegmentation::setupQueues(std::shared_ptr<dai::Device> device) {
     if(ph->getParam<bool>("i_enable_passthrough")) {
         auto tfPrefix = getOpticalTFPrefix(getSocketName(static_cast<dai::CameraBoardSocket>(ph->getParam<int>("i_board_socket_id"))));
         ptQ = device->getOutputQueue(ptQName, ph->getParam<int>("i_max_q_size"), false);
-        imageConverter = std::make_unique<dai::ros::ImageConverter>(tfPrefix, false);
+        imageConverterPt = std::make_unique<dai::ros::ImageConverter>(tfPrefix, false);
         infoManager = std::make_shared<camera_info_manager::CameraInfoManager>(
             getROSNode()->create_sub_node(std::string(getROSNode()->get_name()) + "/" + getName()).get(), "/" + getName());
         infoManager->setCameraInfo(sensor_helpers::getCalibInfo(getROSNode()->get_logger(),
-                                                                imageConverter,
+                                                                imageConverterPt,
                                                                 device,
                                                                 dai::CameraBoardSocket::CAM_A,
                                                                 imageManip->initialConfig.getResizeWidth(),
                                                                 imageManip->initialConfig.getResizeWidth()));
 
         ptPub = image_transport::create_camera_publisher(getROSNode().get(), "~/" + getName() + "/passthrough/image_raw");
-        ptQ->addCallback(std::bind(sensor_helpers::basicCameraPub, std::placeholders::_1, std::placeholders::_2, *imageConverter, ptPub, infoManager));
+        ptQ->addCallback(std::bind(sensor_helpers::basicCameraPub, std::placeholders::_1, std::placeholders::_2, *imageConverterPt, ptPub, infoManager));
     }
 }
 
@@ -356,11 +357,10 @@ void RoadSegmentation::segmentationCB(const std::string& /*name*/, const std::sh
     // auto calibrationHandler = device.readCalibration();
     // auto cameraInfo = converter.calibrationToCameraInfo(calibrationHandler, ph->getParam<int>("i_board_socket_id"), ph->getParam<int>("i_width"), ph->getParam<int>("i_height"));
 
-    const auto imgStamp = in_det->getTimestamp();
+    dai::ros::updateBaseTime(steadyBaseTime, rosBaseTime, totalNsChange);
 
     std_msgs::msg::Header header;
-    header.stamp = rclcpp::Time(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(imgStamp.time_since_epoch()).count());
+    header.stamp = dai::ros::getFrameTime(rosBaseTime, steadyBaseTime, in_det->getTimestamp());
     header.frame_id = frame;
 
     nnInfo.header = header;
