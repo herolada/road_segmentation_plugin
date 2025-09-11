@@ -83,6 +83,9 @@ RoadSegmentation::RoadSegmentation(const std::string& daiNodeName,
     ph = std::make_unique<param_handlers::NNParamHandler>(node, daiNodeName, socket);
     ph->declareParams(segNode, imageManip);
 
+    steadyBaseTime = std::chrono::steady_clock::now();
+    rosBaseTime = rclcpp::Clock().now();
+
     classCosts[static_cast<size_t>(SegmentationClass::BACKGROUND)] = node->declare_parameter("background_cost", 1.0);
     classCosts[static_cast<size_t>(SegmentationClass::ROAD)] = node->declare_parameter("road_cost", 0.0);
     classCosts[static_cast<size_t>(SegmentationClass::SKY)] = node->declare_parameter("sky_cost", 1.0);
